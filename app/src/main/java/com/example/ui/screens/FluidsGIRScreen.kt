@@ -33,6 +33,7 @@ import com.example.ui.viewmodel.NeoCareViewModel
 import com.example.ui.viewmodel.WorkstationState
 import java.util.Locale
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FluidsGIRScreen(
     state: WorkstationState,
@@ -536,9 +537,69 @@ fun FluidsGIRScreen(
                         color = SlateMuted
                     )
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    // Material 3 Dropdown for selecting IV solution type (D10W, Normal Saline, D5 0.45% NS, etc.)
+                    var dropdownExpanded by remember { mutableStateOf(false) }
 
-                    // Horizontal Solution selector chips
+                    ExposedDropdownMenuBox(
+                        expanded = dropdownExpanded,
+                        onExpandedChange = { dropdownExpanded = !dropdownExpanded },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("solution_dropdown_box")
+                    ) {
+                        OutlinedTextField(
+                            value = if (isAr) state.selectedFluidSolution.nameAr else state.selectedFluidSolution.nameEn,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text(if (isAr) "نوع المحلول الوريدي (IV Solution Type)" else "IV Solution Type", fontSize = 11.5.sp) },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dropdownExpanded) },
+                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .menuAnchor()
+                        )
+
+                        ExposedDropdownMenu(
+                            expanded = dropdownExpanded,
+                            onDismissRequest = { dropdownExpanded = false }
+                        ) {
+                            FluidSolutionType.values().forEach { sol ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(
+                                                text = if (isAr) sol.nameAr else sol.nameEn,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 12.sp,
+                                                color = SlateDark
+                                            )
+                                            Text(
+                                                text = "${sol.osmolarityMasmL} mOsm/L • Na: ${sol.sodiumMeqL.toInt()} mEq/L • Dextrose: ${sol.dextrosePercent}%",
+                                                fontSize = 10.sp,
+                                                color = SlateMuted
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        viewModel.setSelectedFluidSolution(sol)
+                                        dropdownExpanded = false
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.WaterDrop,
+                                            contentDescription = null,
+                                            tint = if (state.selectedFluidSolution == sol) TealPrimary else SlateMuted,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Horizontal Solution selector quick chips
                     LazyRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)

@@ -2,20 +2,21 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Brand Clinical Colors (Deep Teal medical identity)
-val TealPrimary = Color(0xFF087873)
-val TealPrimaryDark = Color(0xFF054D4A)
-val TealLightContainer = Color(0xFFE6F4F2)
-val TealOnContainer = Color(0xFF043836)
+// Brand Clinical Colors (Deep Blue medical identity requested by user)
+val TealPrimary = Color(0xFF1D4ED8) // Royal Blue 700
+val TealPrimaryDark = Color(0xFF1E40AF) // Navy Blue 800
+val TealLightContainer = Color(0xFFEFF6FF) // Very soft blue tint
+val TealOnContainer = Color(0xFF1E3A8A) // Deep Navy
 
-val CyanAccent = Color(0xFF0E7490)
-val CyanLightContainer = Color(0xFFE0F2FE)
+val CyanAccent = Color(0xFF2563EB) // Bright Blue
+val CyanLightContainer = Color(0xFFDBEAFE) // Soft blue
 
-val SlateDark = Color(0xFF0F172A)
-val SlateMuted = Color(0xFF64748B)
-val SlateBorder = Color(0xFFE2E8F0)
-val SlateBg = Color(0xFFF8FAFC)
-val SurfaceWhite = Color(0xFFFFFFFF)
+// User explicit request: pure white background and blue text
+val SlateDark = Color(0xFF1E3A8A) // Deep Rich Blue text
+val SlateMuted = Color(0xFF3B82F6) // Medium Blue text
+val SlateBorder = Color(0xFFBFDBFE) // Soft blue border
+val SlateBg = Color(0xFFFFFFFF) // Pure white background
+val SurfaceWhite = Color(0xFFFFFFFF) // Pure white surface
 
 // Status semantic tokens
 val SafeGreen = Color(0xFF16A34A)

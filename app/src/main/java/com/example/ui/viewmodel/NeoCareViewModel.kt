@@ -59,7 +59,12 @@ data class WorkstationState(
     val selectedDrugCategory: DrugCategory? = null,
     // Clinical scores state
     val apgarInput: ApgarInput = ApgarInput(),
-    val apgarTimingMinute: Int = 1, // 1 min, 5 min, 10 min
+    val apgarTimingMinute: Int = 1, // 1 min, 5 min, 10 min, 20 min
+    val apgarRecords: Map<Int, ApgarInput> = mapOf(
+        1 to ApgarInput(appearance = 1, pulse = 2, grimace = 1, activity = 1, respiration = 1),
+        5 to ApgarInput(appearance = 2, pulse = 2, grimace = 2, activity = 2, respiration = 2)
+    ),
+    val scoresSubTab: Int = 0, // 0: Dedicated APGAR Screen, 1: Silverman & Vent Screen
     val silvermanInput: SilvermanInput = SilvermanInput(),
     val bilirubinAgeHours: String = "48",
     val bilirubinInput: String = "10.5",
@@ -70,11 +75,16 @@ data class WorkstationState(
         ph = 7.28,
         pco2 = 52.0,
         po2 = 58.0,
-        hco3 = 23.0,
-        be = -2.5,
         fio2Percent = 30.0,
         mapVentilator = 7.5
     ),
+    // Theme mode: false = Light, true = Dark (clinical environment switch)
+    val isDarkMode: Boolean = false,
+    // Growth Percentile Calculator inputs
+    val growthAgeMonthsInput: String = "12.0",
+    val growthHeightCmInput: String = "75.0",
+    val growthIsMale: Boolean = true,
+    val showShareSummaryDialog: Boolean = false,
     val showPatientDialog: Boolean = false,
     val snackbarMessage: String? = null
 )
@@ -316,8 +326,39 @@ class NeoCareViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // --- Scores actions ---
+    fun setScoresSubTab(subTab: Int) {
+        _uiState.update { it.copy(scoresSubTab = subTab) }
+    }
+
     fun updateApgar(apgar: ApgarInput, minute: Int = _uiState.value.apgarTimingMinute) {
         _uiState.update { it.copy(apgarInput = apgar, apgarTimingMinute = minute) }
+    }
+
+    fun selectApgarMinute(minute: Int) {
+        val existing = _uiState.value.apgarRecords[minute] ?: _uiState.value.apgarInput
+        _uiState.update { it.copy(apgarTimingMinute = minute, apgarInput = existing) }
+    }
+
+    fun saveApgarRecord(minute: Int, apgar: ApgarInput) {
+        _uiState.update {
+            val updated = it.apgarRecords.toMutableMap()
+            updated[minute] = apgar
+            val msg = if (it.isArabic) {
+                "تم حفظ نتيجة مقياس أبغار للدقيقة $minute (${apgar.totalScore}/10) بنجاح"
+            } else {
+                "APGAR score for Minute $minute (${apgar.totalScore}/10) recorded"
+            }
+            it.copy(
+                apgarRecords = updated,
+                apgarInput = apgar,
+                apgarTimingMinute = minute,
+                snackbarMessage = msg
+            )
+        }
+    }
+
+    fun resetApgar() {
+        _uiState.update { it.copy(apgarInput = ApgarInput(0, 0, 0, 0, 0)) }
     }
 
     fun updateSilverman(silverman: SilvermanInput) {
@@ -366,12 +407,130 @@ class NeoCareViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun toggleTheme() {
+        _uiState.update { it.copy(isDarkMode = !it.isDarkMode) }
+    }
+
+    fun setShowShareSummaryDialog(show: Boolean) {
+        _uiState.update { it.copy(showShareSummaryDialog = show) }
+    }
+
+    // --- Growth Percentile Calculator actions ---
+    fun updateGrowthAgeMonths(ageMonths: String) {
+        _uiState.update { it.copy(growthAgeMonthsInput = ageMonths) }
+    }
+
+    fun updateGrowthHeightCm(heightCm: String) {
+        _uiState.update { it.copy(growthHeightCmInput = heightCm) }
+    }
+
+    fun toggleGrowthGender() {
+        _uiState.update { it.copy(growthIsMale = !it.growthIsMale) }
+    }
+
     fun showSnackbar(message: String) {
         _uiState.update { it.copy(snackbarMessage = message) }
     }
 
     fun clearSnackbar() {
         _uiState.update { it.copy(snackbarMessage = null) }
+    }
+
+    /**
+     * Generates a comprehensive, clean clinical calculation summary snippet
+     * suitable for direct text sharing via Email, WhatsApp, SMS, or hospital messaging.
+     */
+    fun generateClinicalSummarySnippet(): String {
+        val s = _uiState.value
+        val p = s.activePatient
+        val weightKg = s.weightInputKg.toDoubleOrNull() ?: p.weightKg
+        val isAr = s.isArabic
+
+        // Fluids
+        val holliday = ClinicalFormulas.calculateHollidaySegar(weightKg)
+        val deficitPercent = s.customDeficitPercent.toDoubleOrNull() ?: s.dehydrationSeverity.defaultPercent
+        val deficit = ClinicalFormulas.calculateDehydrationDeficit(weightKg, deficitPercent)
+
+        // Dosing summary sample (Ampicillin & Paracetamol)
+        val ampi = DrugCatalog.drugs.firstOrNull { it.id == "ampicillin" }
+        val ampiDose = ampi?.calculateDose(weightKg, 50.0)
+        val para = DrugCatalog.drugs.firstOrNull { it.id == "paracetamol" }
+        val paraDose = para?.calculateDose(weightKg, 15.0)
+
+        // APGAR
+        val apgar = s.apgarInput
+        val apgarMin = s.apgarTimingMinute
+
+        // Silverman
+        val silver = s.silvermanInput
+
+        // Bilirubin
+        val biliVal = s.bilirubinInput.toDoubleOrNull() ?: 10.5
+        val ageHrs = s.bilirubinAgeHours.toDoubleOrNull() ?: 48.0
+        val biliResult = ClinicalFormulas.evaluateBilirubin(
+            ageHours = ageHrs,
+            bilirubinInput = biliVal,
+            isUmol = s.bilirubinIsUmol,
+            gestationalWeeks = p.gestationalWeeks,
+            hasRiskFactors = s.bilirubinRiskFactor,
+            weightKg = weightKg
+        )
+
+        return if (isAr) {
+            """
+            🏥 [ملخص الحسابات السريرية - NeoCare Pro Master]
+            المريض: ${p.name}
+            العمر: ${p.gestationalWeeks} أسبوع (يوم ${p.dayOfLife}) | الوزن: ${String.format(Locale.US, "%.2f", weightKg)} كجم
+            ------------------------------------------
+            💧 1. السوائل الوريدية وعجز الجفاف:
+            • صيانة هوليداي-سيجار: ${holliday.dailyMaintenanceMl} مل/يوم (${holliday.hourlyMaintenanceRate} مل/ساعة)
+            • المحلول المختار: ${s.selectedFluidSolution.nameAr}
+            • عجز الجفاف (${deficit.dehydrationPercent}%): ${deficit.totalDeficitMl} مل (أول 8س: ${deficit.first8HourHourlyRate} مل/ساعة | الـ 16س التالية: ${deficit.next16HourHourlyRate} مل/ساعة)
+            • دفعة إنعاش الصدمة: ${deficit.resuscitationBolusMl} مل سالين 0.9%
+
+            👶 2. المقاييس الوليدية (APGAR & Silverman):
+            • مقياس أبغار (الدقيقة $apgarMin): ${apgar.totalScore}/10 (${apgar.statusAr})
+            • مقياس سيلفرمان لضيق التنفس: ${silver.totalScore}/10 (${silver.statusAr})
+
+            💊 3. نماذج الجرعات لوزن الطفل (${String.format(Locale.US, "%.2f", weightKg)} كجم):
+            • أمبيسيلين (50 مجم/كجم): ${ampiDose?.doseAmount ?: "--"} مجم (${ampiDose?.volumeMl ?: "--"} مل IV)
+            • باراسيتامول (15 مجم/كجم): ${paraDose?.doseAmount ?: "--"} مجم (${paraDose?.volumeMl ?: "--"} مل شراب)
+
+            💡 4. تقييم الصفراء (Bilirubin):
+            • نسبة الصفراء: ${biliResult.mgDlValue} مجم/ديسيلتر (عمر: ${biliResult.ageHours.toInt()} ساعة)
+            • عتبة الضوئي: ${biliResult.photoThreshold} مجم | عتبة التبديل: ${biliResult.exchangeThreshold} مجم
+            • القرار: ${biliResult.modality.titleAr}
+            ------------------------------------------
+            تم الاستخراج عبر: تطبيق NeoCare Pro Master الوليدي
+            """.trimIndent()
+        } else {
+            """
+            🏥 [CLINICAL CALCULATION SUMMARY - NeoCare Pro Master]
+            Patient: ${p.name}
+            Age: ${p.gestationalWeeks}w (DOL ${p.dayOfLife}) | Weight: ${String.format(Locale.US, "%.2f", weightKg)} kg
+            ------------------------------------------
+            💧 1. Maintenance Fluids & Deficit:
+            • Holliday-Segar Maintenance: ${holliday.dailyMaintenanceMl} mL/day (${holliday.hourlyMaintenanceRate} mL/hr)
+            • Chosen Solution: ${s.selectedFluidSolution.nameEn}
+            • Dehydration Deficit (${deficit.dehydrationPercent}%): ${deficit.totalDeficitMl} mL (1st 8h: ${deficit.first8HourHourlyRate} mL/hr | Next 16h: ${deficit.next16HourHourlyRate} mL/hr)
+            • Shock Bolus: ${deficit.resuscitationBolusMl} mL 0.9% NS
+
+            👶 2. Neonatal Transition Scores:
+            • APGAR Score (Minute $apgarMin): ${apgar.totalScore}/10 (${apgar.statusEn})
+            • Silverman-Anderson Respiratory Score: ${silver.totalScore}/10 (${silver.statusEn})
+
+            💊 3. Medication Dosing for ${String.format(Locale.US, "%.2f", weightKg)} kg:
+            • Ampicillin (50 mg/kg): ${ampiDose?.doseAmount ?: "--"} mg (${ampiDose?.volumeMl ?: "--"} mL IV)
+            • Paracetamol (15 mg/kg): ${paraDose?.doseAmount ?: "--"} mg (${paraDose?.volumeMl ?: "--"} mL oral)
+
+            💡 4. Bilirubin & Phototherapy:
+            • TSB: ${biliResult.mgDlValue} mg/dL (Age: ${biliResult.ageHours.toInt()}h)
+            • Photo Threshold: ${biliResult.photoThreshold} mg/dL | Exchange Threshold: ${biliResult.exchangeThreshold} mg/dL
+            • Decision: ${biliResult.modality.titleEn}
+            ------------------------------------------
+            Generated by: NeoCare Pro Master Pediatric & Neonatal Workstation
+            """.trimIndent()
+        }
     }
 
     /**

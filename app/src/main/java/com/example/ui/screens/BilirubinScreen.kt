@@ -32,6 +32,7 @@ import com.example.ui.components.UnitInputField
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.NeoCareViewModel
 import com.example.ui.viewmodel.WorkstationState
+import java.util.Locale
 
 @Composable
 fun BilirubinScreen(
@@ -117,10 +118,61 @@ fun BilirubinScreen(
                 badgeText = "${biliResult.mgDlValue} mg/dL",
                 alertLevel = biliResult.alertLevel
             ) {
+                // 1. Gestational Age (Weeks) Selector Chips (<35w, 35-37w, >=38w)
+                Text(
+                    text = if (isAr) "العمر الحملي بالأسابيع (Gestational Age):" else "Gestational Age (weeks):",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = SlateMuted
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val gaOptions = listOf(
+                        Triple(32, if (isAr) "< 35 أسبوع (خديج)" else "< 35w (Preterm)", 32),
+                        Triple(36, if (isAr) "35 - 37 أسبوع" else "35-37w", 36),
+                        Triple(39, if (isAr) ">= 38 أسبوع (مكتمل)" else ">= 38w (Term)", 39)
+                    )
+                    gaOptions.forEach { (gaVal, label, targetVal) ->
+                        val isSelected = when (gaVal) {
+                            32 -> state.activePatient.gestationalWeeks < 35
+                            36 -> state.activePatient.gestationalWeeks in 35..37
+                            else -> state.activePatient.gestationalWeeks >= 38
+                        }
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                viewModel.savePatient(state.activePatient.copy(gestationalWeeks = targetVal))
+                            },
+                            label = { Text(text = label, fontSize = 10.5.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 2. Weight and Age in Hours Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    UnitInputField(
+                        value = String.format(Locale.US, "%.2f", weightKg),
+                        onValueChange = {
+                            val parsed = it.toDoubleOrNull()
+                            if (parsed != null && parsed > 0) {
+                                viewModel.updatePatientWeight(parsed)
+                            }
+                        },
+                        label = if (isAr) "وزن الطفل (كيلوجرام)" else "Neonate Weight",
+                        unit = "kg",
+                        modifier = Modifier.weight(1f),
+                        testTag = "bili_weight_input"
+                    )
+
                     UnitInputField(
                         value = state.bilirubinAgeHours,
                         onValueChange = { viewModel.updateBilirubinAgeHours(it) },
@@ -129,41 +181,51 @@ fun BilirubinScreen(
                         modifier = Modifier.weight(1f),
                         testTag = "bili_age_input"
                     )
+                }
 
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // 3. Bilirubin Value and Unit Toggle Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     UnitInputField(
                         value = state.bilirubinInput,
                         onValueChange = { viewModel.updateBilirubinValue(it) },
                         label = if (isAr) "نسبة الصفراء (TSB)" else "Total Bilirubin",
                         unit = if (state.bilirubinIsUmol) "µmol/L" else "mg/dL",
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1.2f),
                         testTag = "bili_val_input"
+                    )
+
+                    FilterChip(
+                        selected = state.bilirubinIsUmol,
+                        onClick = { viewModel.toggleBilirubinUnit() },
+                        label = {
+                            Text(text = if (state.bilirubinIsUmol) "µmol/L" else "mg/dL", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        },
+                        modifier = Modifier
+                            .weight(0.8f)
+                            .align(Alignment.CenterVertically)
                     )
                 }
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    FilterChip(
-                        selected = state.bilirubinIsUmol,
-                        onClick = { viewModel.toggleBilirubinUnit() },
-                        label = {
-                            Text(text = if (state.bilirubinIsUmol) "الوحدة: µmol/L" else "Unit: mg/dL", fontSize = 11.sp)
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    FilterChip(
-                        selected = state.bilirubinRiskFactor,
-                        onClick = { viewModel.toggleBilirubinRisk() },
-                        label = {
-                            Text(text = if (isAr) "عوامل خطورة تكسير/تسمم" else "Neurotoxicity Risk (+)", fontSize = 11.sp)
-                        },
-                        modifier = Modifier.weight(1.3f)
-                    )
-                }
+                // 4. Neurotoxicity Risk Factors Toggle
+                FilterChip(
+                    selected = state.bilirubinRiskFactor,
+                    onClick = { viewModel.toggleBilirubinRisk() },
+                    label = {
+                        Text(
+                            text = if (isAr) "عوامل خطورة التسمم العصبي (تكسير دم، سيبسيس، ألبومين < 3)" else "Neurotoxicity Risk (Hemolysis / Sepsis / Albumin < 3)",
+                            fontSize = 11.sp,
+                            fontWeight = if (state.bilirubinRiskFactor) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
 

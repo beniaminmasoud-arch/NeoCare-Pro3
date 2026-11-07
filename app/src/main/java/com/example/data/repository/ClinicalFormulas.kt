@@ -678,4 +678,193 @@ object ClinicalFormulas {
             recommendationsAr = recsAr
         )
     }
+
+    /**
+     * WHO Child Growth Standards (0-5 years) & CDC Growth Charts (up to 18 years)
+     * Calculates Weight-for-Age, Height/Length-for-Age, and BMI-for-Age percentiles and z-scores.
+     */
+    fun calculateGrowthPercentiles(
+        ageMonths: Double,
+        isMale: Boolean,
+        weightKg: Double,
+        heightCm: Double
+    ): GrowthPercentileResult {
+        val safeAge = max(0.0, min(ageMonths, 216.0)) // up to 18 years (216 months)
+        val safeWeight = max(0.5, weightKg)
+        val safeHeight = max(25.0, heightCm)
+
+        val heightM = safeHeight / 100.0
+        val bmi = (safeWeight / (heightM * heightM) * 10.0).roundToInt() / 10.0
+
+        // Median Weight (kg) formula approximation aligned with WHO (0-60m) & CDC (60-216m)
+        val medianWeight = if (isMale) {
+            when {
+                safeAge <= 12.0 -> 3.3 + (safeAge * 0.53)
+                safeAge <= 60.0 -> 9.6 + ((safeAge - 12.0) * 0.18)
+                else -> 18.3 + ((safeAge - 60.0) * 0.28)
+            }
+        } else {
+            when {
+                safeAge <= 12.0 -> 3.2 + (safeAge * 0.49)
+                safeAge <= 60.0 -> 9.0 + ((safeAge - 12.0) * 0.17)
+                else -> 17.5 + ((safeAge - 60.0) * 0.27)
+            }
+        }
+
+        // Weight standard deviation (~12-16% coefficient of variation)
+        val weightSd = medianWeight * 0.13
+        val weightZ = ((safeWeight - medianWeight) / weightSd).coerceIn(-4.0, 4.0)
+        val weightPct = (zScoreToPercentile(weightZ) * 10.0).roundToInt() / 10.0
+
+        // Median Height (cm) formula approximation aligned with WHO & CDC
+        val medianHeight = if (isMale) {
+            when {
+                safeAge <= 12.0 -> 50.0 + (safeAge * 2.1)
+                safeAge <= 60.0 -> 75.0 + ((safeAge - 12.0) * 0.72)
+                else -> 110.0 + ((safeAge - 60.0) * 0.42)
+            }
+        } else {
+            when {
+                safeAge <= 12.0 -> 49.0 + (safeAge * 2.05)
+                safeAge <= 60.0 -> 74.0 + ((safeAge - 12.0) * 0.71)
+                else -> 109.0 + ((safeAge - 60.0) * 0.41)
+            }
+        }
+
+        val heightSd = medianHeight * 0.045
+        val heightZ = ((safeHeight - medianHeight) / heightSd).coerceIn(-4.0, 4.0)
+        val heightPct = (zScoreToPercentile(heightZ) * 10.0).roundToInt() / 10.0
+
+        // Median BMI (kg/m^2)
+        val medianBmi = if (safeAge <= 12.0) 16.8 - (safeAge * 0.05)
+        else if (safeAge <= 60.0) 16.2 - ((safeAge - 12.0) * 0.02)
+        else 15.3 + ((safeAge - 60.0) * 0.04)
+
+        val bmiSd = medianBmi * 0.11
+        val bmiZ = ((bmi - medianBmi) / bmiSd).coerceIn(-4.0, 4.0)
+        val bmiPct = (zScoreToPercentile(bmiZ) * 10.0).roundToInt() / 10.0
+
+        // Reference Points for visualization
+        val wP3 = (medianWeight - (1.88 * weightSd) * 10.0).roundToInt() / 10.0
+        val wP15 = (medianWeight - (1.04 * weightSd) * 10.0).roundToInt() / 10.0
+        val wP50 = (medianWeight * 10.0).roundToInt() / 10.0
+        val wP85 = (medianWeight + (1.04 * weightSd) * 10.0).roundToInt() / 10.0
+        val wP97 = (medianWeight + (1.88 * weightSd) * 10.0).roundToInt() / 10.0
+
+        val hP3 = (medianHeight - (1.88 * heightSd) * 10.0).roundToInt() / 10.0
+        val hP15 = (medianHeight - (1.04 * heightSd) * 10.0).roundToInt() / 10.0
+        val hP50 = (medianHeight * 10.0).roundToInt() / 10.0
+        val hP85 = (medianHeight + (1.04 * heightSd) * 10.0).roundToInt() / 10.0
+        val hP97 = (medianHeight + (1.88 * heightSd) * 10.0).roundToInt() / 10.0
+
+        // Categorizations
+        val wCatEn = when {
+            weightPct < 3.0 -> "Severely Underweight (<3rd %ile)"
+            weightPct < 15.0 -> "Mildly Underweight (3rd - 15th %ile)"
+            weightPct <= 85.0 -> "Healthy Weight (15th - 85th %ile)"
+            weightPct <= 97.0 -> "Overweight (85th - 97th %ile)"
+            else -> "Obese (>97th %ile)"
+        }
+        val wCatAr = when {
+            weightPct < 3.0 -> "نقص وزن حاد (أقل من المئين 3)"
+            weightPct < 15.0 -> "نقص وزن طفيف (بين المئين 3 و 15)"
+            weightPct <= 85.0 -> "وزن طبيعي وصحي (المئين 15 إلى 85)"
+            weightPct <= 97.0 -> "زيادة في الوزن (المئين 85 إلى 97)"
+            else -> "سمنة مفرطة (أعلى من المئين 97)"
+        }
+
+        val hCatEn = when {
+            heightPct < 3.0 -> "Severe Stunting (<3rd %ile)"
+            heightPct < 15.0 -> "Short Stature (3rd - 15th %ile)"
+            heightPct <= 85.0 -> "Normal Height (15th - 85th %ile)"
+            else -> "Tall Stature (>85th %ile)"
+        }
+        val hCatAr = when {
+            heightPct < 3.0 -> "قصر قامة حاد / تقزم (< المئين 3)"
+            heightPct < 15.0 -> "قامة قصيرة (بين المئين 3 و 15)"
+            heightPct <= 85.0 -> "طول طبيعي ومثالي (المئين 15 إلى 85)"
+            else -> "قامة طويلة (> المئين 85)"
+        }
+
+        val bmiCatEn = when {
+            bmiPct < 5.0 -> "Underweight (<5th %ile)"
+            bmiPct < 85.0 -> "Normal BMI (5th - 85th %ile)"
+            bmiPct < 95.0 -> "Overweight (85th - 95th %ile)"
+            else -> "Obese (>=95th %ile)"
+        }
+        val bmiCatAr = when {
+            bmiPct < 5.0 -> "نقص في كتلة الجسم (< المئين 5)"
+            bmiPct < 85.0 -> "كتلة جسم صحية (المئين 5 إلى 85)"
+            bmiPct < 95.0 -> "زيادة كتلة الجسم (المئين 85 إلى 95)"
+            else -> "سمنة سريرية (>= المئين 95)"
+        }
+
+        val alertLevel = when {
+            weightPct < 3.0 || heightPct < 3.0 || bmiPct >= 97.0 -> AlertLevel.DANGER
+            weightPct < 15.0 || heightPct < 15.0 || bmiPct >= 85.0 -> AlertLevel.WARNING
+            else -> AlertLevel.SAFE
+        }
+
+        val overallAr = when (alertLevel) {
+            AlertLevel.SAFE -> "نمو سليم ومتناسق يقع ضمن المعدلات الطبيعية لمنظمة الصحة العالمية (WHO)."
+            AlertLevel.WARNING -> "المؤشرات تظهر انحرافاً طفيفاً يستدعي متابعة السعرات الحرارية والتغذية المتوازنة."
+            AlertLevel.DANGER -> "تنبيه سريري: القيم تقع خارج النطاق الآمن (< 3% أو > 97%). يُنصح بفحص سوء التغذية أو الفشل الكلوي/القلبي."
+        }
+        val overallEn = when (alertLevel) {
+            AlertLevel.SAFE -> "Growth is healthy, tracking well within WHO standard percentile corridors."
+            AlertLevel.WARNING -> "Borderline values detected. Review caloric intake and track growth velocity closely."
+            AlertLevel.DANGER -> "Clinical Alert: Extreme percentile deviation (<3rd or >97th %ile). Assess for failure to thrive or endocrine evaluation."
+        }
+
+        return GrowthPercentileResult(
+            ageMonths = (safeAge * 10.0).roundToInt() / 10.0,
+            genderIsMale = isMale,
+            weightKg = (safeWeight * 100.0).roundToInt() / 100.0,
+            heightCm = (safeHeight * 10.0).roundToInt() / 10.0,
+            bmi = bmi,
+            weightPercentile = weightPct,
+            heightPercentile = heightPct,
+            bmiPercentile = bmiPct,
+            weightZScore = (weightZ * 100.0).roundToInt() / 100.0,
+            heightZScore = (heightZ * 100.0).roundToInt() / 100.0,
+            bmiZScore = (bmiZ * 100.0).roundToInt() / 100.0,
+            weightCategoryEn = wCatEn,
+            weightCategoryAr = wCatAr,
+            heightCategoryEn = hCatEn,
+            heightCategoryAr = hCatAr,
+            bmiCategoryEn = bmiCatEn,
+            bmiCategoryAr = bmiCatAr,
+            overallAssessmentEn = overallEn,
+            overallAssessmentAr = overallAr,
+            alertLevel = alertLevel,
+            weightP3 = wP3,
+            weightP15 = wP15,
+            weightP50 = wP50,
+            weightP85 = wP85,
+            weightP97 = wP97,
+            heightP3 = hP3,
+            heightP15 = hP15,
+            heightP50 = hP50,
+            heightP85 = hP85,
+            heightP97 = hP97
+        )
+    }
+
+    /**
+     * Converts a z-score to standard cumulative normal percentile (0 - 100%)
+     * using the Abramowitz and Stegun error function approximation.
+     */
+    private fun zScoreToPercentile(z: Double): Double {
+        val cdf = 0.5 * (1.0 + erf(z / Math.sqrt(2.0)))
+        return (cdf * 100.0).coerceIn(0.1, 99.9)
+    }
+
+    private fun erf(x: Double): Double {
+        val sign = if (x < 0) -1.0 else 1.0
+        val absX = Math.abs(x)
+        val p = 0.3275911
+        val t = 1.0 / (1.0 + p * absX)
+        val y = 1.0 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-absX * absX)
+        return sign * y
+    }
 }

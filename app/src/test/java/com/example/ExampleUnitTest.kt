@@ -46,10 +46,29 @@ class ExampleUnitTest {
         val normalApgar = ApgarInput(appearance = 2, pulse = 2, grimace = 2, activity = 2, respiration = 2)
         assertEquals(10, normalApgar.totalScore)
         assertEquals(AlertLevel.SAFE, normalApgar.alertLevel)
+        assertEquals("Completely pink all over (2)", normalApgar.appearanceLabelEn)
+        assertEquals(">= 100 bpm (2)", normalApgar.pulseLabelEn)
+
+        val moderateApgar = ApgarInput(appearance = 1, pulse = 1, grimace = 1, activity = 1, respiration = 1)
+        assertEquals(5, moderateApgar.totalScore)
+        assertEquals(AlertLevel.WARNING, moderateApgar.alertLevel)
 
         val depressedApgar = ApgarInput(appearance = 0, pulse = 1, grimace = 0, activity = 0, respiration = 1)
         assertEquals(2, depressedApgar.totalScore)
         assertEquals(AlertLevel.DANGER, depressedApgar.alertLevel)
+
+        val zeroApgar = ApgarInput(appearance = 0, pulse = 0, grimace = 0, activity = 0, respiration = 0)
+        assertEquals(0, zeroApgar.totalScore)
+        assertEquals(AlertLevel.DANGER, zeroApgar.alertLevel)
+
+        // SpO2 targets
+        assertEquals("60% - 65%", normalApgar.getSpO2Target(1))
+        assertEquals("80% - 85%", normalApgar.getSpO2Target(5))
+        assertEquals("85% - 95%", normalApgar.getSpO2Target(10))
+
+        // NRP action guidance
+        assertTrue(depressedApgar.getNrpActionGuidance(1, false).contains("STAT NRP RESUSCITATION"))
+        assertTrue(normalApgar.getNrpActionGuidance(1, false).contains("Routine Care"))
     }
 
     @Test
@@ -61,6 +80,34 @@ class ExampleUnitTest {
         val severeSilverman = SilvermanInput(upperChest = 2, lowerChest = 2, xiphoidRetract = 2, naresFlaring = 1, expiratoryGrunt = 1)
         assertEquals(8, severeSilverman.totalScore)
         assertEquals(AlertLevel.DANGER, severeSilverman.alertLevel)
+
+        // Test modern 5 signs: nasal flaring, grunting, retractions, breathing pattern, and cyanosis
+        val modernFiveSignsMild = SilvermanInput(
+            nasalFlaring = 1,
+            grunting = 0,
+            retractions = 1,
+            breathingPattern = 0,
+            cyanosis = 0
+        )
+        assertEquals(2, modernFiveSignsMild.totalScore)
+        assertEquals(AlertLevel.SAFE, modernFiveSignsMild.alertLevel)
+        assertEquals("Minimal flaring (1)", modernFiveSignsMild.nasalFlaringLabelEn)
+        assertEquals("None (0)", modernFiveSignsMild.gruntingLabelEn)
+
+        val modernFiveSignsSevere = SilvermanInput(
+            nasalFlaring = 2,
+            grunting = 2,
+            retractions = 2,
+            breathingPattern = 1,
+            cyanosis = 1
+        )
+        assertEquals(8, modernFiveSignsSevere.totalScore)
+        assertEquals(AlertLevel.DANGER, modernFiveSignsSevere.alertLevel)
+        assertEquals("Marked / continuous flaring (2)", modernFiveSignsSevere.nasalFlaringLabelEn)
+        assertEquals("Audible with naked ear (2)", modernFiveSignsSevere.gruntingLabelEn)
+        assertEquals("Marked sternal & intercostal retraction (2)", modernFiveSignsSevere.retractionsLabelEn)
+        assertEquals("Lag on inspiration (1)", modernFiveSignsSevere.breathingPatternLabelEn)
+        assertEquals("Acrocyanosis or relieved with low-flow O2 (1)", modernFiveSignsSevere.cyanosisLabelEn)
     }
 
     @Test
@@ -232,6 +279,33 @@ class ExampleUnitTest {
         assertEquals(77.0, d5HalfNs.sodiumMeqL, 0.01)
         assertEquals(20.0, d5HalfNs.potassiumMeqL, 0.01)
         assertEquals(5.0, d5HalfNs.dextrosePercent, 0.01)
+    }
+
+    @Test
+    fun testGrowthPercentiles() {
+        // 12-month old male, 9.6 kg (expected median for 12m), height 75 cm (expected median)
+        val growth12m = ClinicalFormulas.calculateGrowthPercentiles(
+            ageMonths = 12.0,
+            isMale = true,
+            weightKg = 9.66,
+            heightCm = 75.2
+        )
+        // Median should yield ~50th percentile
+        assertEquals(50.0, growth12m.weightPercentile, 5.0)
+        assertEquals(50.0, growth12m.heightPercentile, 5.0)
+        assertEquals(AlertLevel.SAFE, growth12m.alertLevel)
+        assertTrue(growth12m.weightCategoryEn.contains("Healthy Weight"))
+
+        // Severely underweight infant: 12-month old male at 6.0 kg
+        val underweightGrowth = ClinicalFormulas.calculateGrowthPercentiles(
+            ageMonths = 12.0,
+            isMale = true,
+            weightKg = 6.0,
+            heightCm = 75.0
+        )
+        assertTrue(underweightGrowth.weightPercentile < 3.0)
+        assertEquals(AlertLevel.DANGER, underweightGrowth.alertLevel)
+        assertTrue(underweightGrowth.weightCategoryEn.contains("Severely Underweight"))
     }
 }
 
