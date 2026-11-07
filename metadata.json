@@ -1,0 +1,6 @@
+{
+  "name": "NeoCare Pro",
+  "description": "Pediatric & Neonatal Workstation for NICU/PICU clinical calculations, drug dosing, APGAR, Silverman scores, phototherapy risk, and fluids.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
